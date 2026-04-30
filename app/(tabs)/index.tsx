@@ -1,98 +1,311 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { ThemedText } from "@/components/themed-text";
+import { Ionicons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+// Import จากไฟล์ที่คุณสร้างไว้
+import { getBalance, WalletService } from "../../utils/wallet";
+
+import { Link } from "expo-router";
+
+const { width } = Dimensions.get("window");
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const [hasKeypair, setHasKeypair] = useState(false);
+  const [address, setAddress] = useState("");
+  const [balance, setBalance] = useState("0.00 ETH");
+  const [isLoading, setIsLoading] = useState(false);
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const fetchCurrentBalance = useCallback(async (walletAddress: string) => {
+    if (!walletAddress) return;
+    setIsLoading(true);
+    try {
+      const newBalance = await getBalance(walletAddress);
+      const formatted = parseFloat(newBalance).toFixed(4);
+      setBalance(`${formatted} ETH`);
+    } catch (error) {
+      console.error("Refresh error:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      const savedAddress = await WalletService.getStoredAddress();
+      if (savedAddress) {
+        setAddress(savedAddress);
+        setHasKeypair(true);
+        fetchCurrentBalance(savedAddress);
+      }
+    };
+    init();
+  }, [fetchCurrentBalance]);
+
+  const handleGenerateKeypair = async () => {
+    try {
+      const wallet = await WalletService.generateAndSaveKeypair();
+      setAddress(wallet.address);
+      setHasKeypair(true);
+      fetchCurrentBalance(wallet.address);
+      Alert.alert("Security", "New keypair secured in hardware enclave.");
+    } catch (error) {
+      Alert.alert("Error", "Could not generate secure keypair.");
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (!address) return;
+    await Clipboard.setStringAsync(address);
+    Alert.alert("Copied", "Address copied to clipboard!");
+  };
+
+  const displayAddress = hasKeypair
+    ? `${address.slice(0, 6)}...${address.slice(-4)}`
+    : "No Address Generated";
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.header}>
+          <ThemedText type="title" style={styles.mainHeading}>
+            Offline-first Wallet
+          </ThemedText>
+        </View>
+
+        {/* Wallet Card */}
+        <View style={styles.premiumCard}>
+          <View style={styles.cardInfo}>
+            <View>
+              <ThemedText style={styles.networkLabel}>
+                Sepolia Test Network
+              </ThemedText>
+
+              {hasKeypair ? (
+                <View style={styles.balanceRow}>
+                  <ThemedText style={styles.balanceText}>{balance}</ThemedText>
+                  <TouchableOpacity
+                    onPress={() => fetchCurrentBalance(address)}
+                    disabled={isLoading}
+                    style={styles.refreshCircle}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                      <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.generateBtn}
+                  onPress={handleGenerateKeypair}
+                >
+                  <Ionicons name="key-outline" size={20} color="#0062FF" />
+                  <ThemedText style={styles.generateBtnText}>
+                    Generate Keypair
+                  </ThemedText>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.cardFooter}>
+            <TouchableOpacity
+              style={styles.addressPill}
+              onPress={copyToClipboard}
+              disabled={!hasKeypair}
+            >
+              <ThemedText style={styles.addressValue}>
+                {displayAddress}
+              </ThemedText>
+              {hasKeypair && (
+                <Ionicons
+                  name="copy-outline"
+                  size={14}
+                  color="#FFFFFF"
+                  style={{ marginLeft: 6 }}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ThemedText style={styles.sectionHeader}>Main Services</ThemedText>
+        <View style={[styles.servicesGrid, !hasKeypair && { opacity: 0.5 }]}>
+          <Link href="/normal-send" asChild>
+            <TouchableOpacity>
+              <ServiceBtn
+                icon="arrow-up"
+                label="Send"
+                bgColor="#F0F7FF"
+                iconColor="#0062FF"
+                disabled={false}
+              />
+            </TouchableOpacity>
+          </Link>
+          <ServiceBtn
+            icon="arrow-down"
+            label="Receive"
+            bgColor="#F0FFF4"
+            iconColor="#34C759"
+            disabled={!hasKeypair}
+          />
+
+          <ServiceBtn
+            icon="grid-outline"
+            label="More"
+            bgColor="#F8F8F8"
+            iconColor="#8E8E93"
+            disabled={!hasKeypair}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
+const ServiceBtn = ({ icon, label, bgColor, iconColor, disabled }: any) => (
+  <View style={styles.serviceItem}>
+    <View style={[styles.serviceIconBox, { backgroundColor: bgColor }]}>
+      <Ionicons name={icon} size={26} color={iconColor} />
+    </View>
+    <ThemedText style={styles.serviceLabel}>{label}</ThemedText>
+  </View>
+);
+
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  scrollContent: { padding: 20 },
+  header: { flexDirection: "row", marginBottom: 32, marginTop: 8 },
+  mainHeading: { fontSize: 28, fontWeight: "800", color: "#1C1C1E" },
+  premiumCard: {
+    width: "100%",
+    height: 180,
+    backgroundColor: "#0062FF",
+    borderRadius: 28,
+    padding: 24,
+    justifyContent: "space-between",
+    elevation: 8,
+    shadowColor: "#0062FF",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
   },
-  stepContainer: {
-    gap: 8,
+  cardInfo: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  networkLabel: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  balanceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  balanceText: {
+    color: "#FFFFFF",
+    fontSize: 32,
+    fontWeight: "800",
+    lineHeight: 40, // Ensures top of text isn't clipped
+  },
+  refreshCircle: {
+    marginLeft: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  generateBtn: {
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  generateBtnText: {
+    color: "#0062FF",
+    fontWeight: "700",
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  addressPill: {
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  addressValue: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 36,
+    marginBottom: 16,
+  },
+  servicesGrid: { flexDirection: "row", justifyContent: "space-between" },
+  serviceItem: { alignItems: "center", width: (width - 40) / 4.2 },
+  serviceIconBox: {
+    width: 60,
+    height: 60,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  serviceLabel: { fontSize: 13, fontWeight: "600", color: "#3A3A3C" },
+  securityDetailCard: {
+    backgroundColor: "#F9F9FB",
+    borderRadius: 24,
+    padding: 20,
+    marginTop: 32,
+    borderWidth: 1,
+    borderColor: "#F0F0F0",
   },
+  securityHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  securityIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#EBF3FF",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  securityTitle: { fontSize: 15, fontWeight: "700" },
+  securityDescription: { fontSize: 13, color: "#636366", lineHeight: 18 },
 });

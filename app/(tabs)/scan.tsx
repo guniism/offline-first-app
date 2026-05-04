@@ -1,7 +1,9 @@
-import { ThemedText } from "@/components/themed-text";
+import SignPaymentModal from "@/components/custom/SignModal";
 import { ThemedView } from "@/components/themed-view";
+import { TXPayload3 } from "@/types/types";
+import { saveSignedTx } from "@/utils/localTx";
 import { Ionicons } from "@expo/vector-icons";
-import { Wallet } from "ethers";
+import { formatEther } from "ethers";
 import { Camera, CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import React, { useState } from "react";
@@ -19,18 +21,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function ScanPage() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
-  const [walletData, setWalletData] = useState<{
-    address: string;
-    balance: string;
-  } | null>(null);
+  // const [walletData, setWalletData] = useState<{
+  //   address: string;
+  //   balance: string;
+  // } | null>(null);
+  const [payloadData, setPayloadData] = useState<TXPayload3 | null>(null);
 
-  // ฟังก์ชันสแกนจากรูปภาพ (ใช้ Camera.scanFromURLAsync แทน BarCodeScanner)
+  // const [testData, setTestData] = useState<string | null>(null);
+  // Function to scan QR code from an image (using Camera.scanFromURLAsync instead of BarCodeScanner)
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
       Alert.alert(
         "Permission Required",
-        "ขออนุญาตเข้าถึงรูปภาพเพื่อใช้งานฟีเจอร์นี้",
+        // "Permission to access media library is required to use this feature",
       );
       return;
     }
@@ -44,71 +48,84 @@ export default function ScanPage() {
     if (!result.canceled) {
       const uri = result.assets[0].uri;
       try {
-        // ใช้ Camera ตัวหลักของ expo-camera สแกนจาก URI
+        // Use Expo Camera to scan QR code from image URI
         const scannedResults = await Camera.scanFromURLAsync(uri, ["qr"]);
 
         if (scannedResults.length > 0) {
           handleBarCodeScanned({ data: scannedResults[0].data });
         } else {
-          Alert.alert("Not Found", "ไม่พบ QR Code ในรูปภาพที่เลือก");
+          Alert.alert("Not Found", "No QR code detected in the selected image");
         }
       } catch (error) {
         console.error("Scan Error:", error);
         Alert.alert(
           "Error",
-          "อุปกรณ์รุ่นนี้อาจไม่รองรับการสแกนจากรูปภาพโดยตรง",
+          // "This device may not support scanning QR codes from images",
         );
       }
-    }
-  };
-
-  const fetchBalance = async (address: string) => {
-    // Note: ควรเปลี่ยน API_KEY เป็นค่าของคุณเองในภายหลัง
-    const API_KEY = "MNQGK1HRMJPUNBKAPVQI94KPZW2VXX3IVB";
-    const url = `https://api.etherscan.io/v2/api?apikey=${API_KEY}&module=account&chainid=11155111&action=balance&address=${address}&tag=latest`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      return data.status === "1"
-        ? (parseFloat(data.result) / 1e18).toFixed(4)
-        : "0.0000";
-    } catch {
-      return "0.0000";
     }
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    if (scanned && walletData) return;
+    // 1. Prevent duplicate processing if a scan is already active
+    if (scanned) return;
     setScanned(true);
 
     try {
-      let address = "";
-      // ลอง Parse JSON (เผื่อมาจากหน้า Receive)
+      let parsed = null;
       try {
-        const parsed = JSON.parse(data);
-        address = parsed.receiver || "";
-      } catch {
-        // ถ้าไม่ใช่ JSON ตรวจสอบว่าเป็น Private Key หรือ Address ตรงๆ
-        if (data.length === 66 || data.length === 64) {
-          address = new Wallet(data).address;
-        } else if (data.startsWith("0x") && data.length === 42) {
-          address = data;
-        }
+        parsed = JSON.parse(data);
+      } catch (e) {
+        console.warn("QR Data is not valid JSON");
       }
 
-      if (address) {
-        const balance = await fetchBalance(address);
-        setWalletData({ address, balance });
+      if (!parsed || !parsed.type) {
+        throw new Error("Invalid payload structure");
+      }
+
+      // 2. Handle Unsigned Transaction (Draft)
+      if (parsed.type === "NOT_SIGNED") {
+        setPayloadData({
+          type: "NOT_SIGNED",
+          data: {
+            receiver: parsed.data?.receiver,
+            amount: parsed.data?.amount, // Expected in Wei or ETH string
+            currency: parsed.data?.currency || "ETH",
+            network: parsed.data?.network || "Sepolia",
+            timestamp: parsed.data?.timestamp || Date.now(),
+          },
+        });
+      }
+      // 3. Handle Signed Transaction (Ready to Broadcast)
+      else if (parsed.type === "SIGNED") {
+        setPayloadData({
+          type: "SIGNED",
+          data: {
+            status: parsed.data?.status,
+            isOwner: parsed.data?.isOwner,
+            from: parsed.data?.from,
+            to: parsed.data?.to,
+            amount: parsed.data?.amount,
+            nonce: parsed.data?.nonce,
+            uuid: parsed.data?.uuid,
+            signature: {
+              r: parsed.data?.signature?.r,
+              s: parsed.data?.signature?.s,
+              v: parsed.data?.signature?.v,
+            },
+            signedAt: parsed.data?.signedAt,
+          },
+        });
       } else {
-        Alert.alert(
-          "Invalid QR",
-          "ข้อมูลใน QR Code ไม่ใช่รูปแบบกระเป๋าเงินที่รองรับ",
-        );
-        setScanned(false);
+        throw new Error("Unsupported payload type");
       }
     } catch (e) {
-      Alert.alert("Error", "ไม่สามารถประมวลผลข้อมูลได้");
-      setScanned(false);
+      console.error("Scan Error:", e);
+      Alert.alert(
+        "Scan Failed",
+        "The QR code format is invalid or not supported.",
+        [{ text: "Try Again", onPress: () => setScanned(false) }],
+      );
     }
   };
 
@@ -119,7 +136,8 @@ export default function ScanPage() {
       <ThemedView style={styles.centerContainer}>
         <Ionicons name="camera-outline" size={64} color="#8E8E93" />
         <Text style={styles.permissionText}>
-          เราต้องขอใช้กล้องเพื่อทำการสแกน
+          Camera access is required to scan QR codes. Please allow camera
+          permission to continue.
         </Text>
         <TouchableOpacity
           style={styles.permissionBtn}
@@ -127,74 +145,154 @@ export default function ScanPage() {
         >
           <Text style={styles.permissionBtnText}>Allow Camera</Text>
         </TouchableOpacity>
+
+        {/* <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
+          <Ionicons name="image-outline" size={24} color="white" />
+          <Text style={styles.uploadBtnText}>Upload from Gallery</Text>
+        </TouchableOpacity> */}
       </ThemedView>
     );
   }
 
+  const shortenAddress = (address: string) =>
+    `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+  const handleConfirm = async () => {
+    if (!payloadData || payloadData.type !== "SIGNED") return;
+
+    try {
+      console.log("Broadcasting TX:", payloadData);
+
+      // 1. Save to local storage using your utility
+      // This ensures the user sees it in their TransactionList later
+      await saveSignedTx(payloadData.data);
+
+      Alert.alert("Success", "Transaction sent successfully", [
+        {
+          text: "OK",
+          onPress: () => {
+            // 2. Reset state only after user acknowledges
+            setScanned(false);
+            setPayloadData(null);
+          },
+        },
+      ]);
+    } catch (err) {
+      console.error("Broadcast Error:", err);
+      Alert.alert("Error", "Failed to send transaction");
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      {!walletData ? (
-        <View style={styles.cameraWrapper}>
-          <CameraView
-            style={styles.scanner}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          />
-          <View style={styles.overlay}>
+    <View style={styles.container}>
+      {!payloadData ? (
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+          zoom={0.1}
+        >
+          <SafeAreaView style={styles.overlay}>
             <View style={styles.focusedContainer}>
               <View style={styles.cornerTopLeft} />
               <View style={styles.cornerTopRight} />
               <View style={styles.cornerBottomLeft} />
               <View style={styles.cornerBottomRight} />
             </View>
-            <ThemedText style={styles.scanText}>Scan Wallet QR Code</ThemedText>
+            <Text style={styles.scanText}>Scan Wallet QR Code</Text>
 
             <TouchableOpacity style={styles.uploadBtn} onPress={pickImage}>
               <Ionicons name="image-outline" size={24} color="white" />
               <Text style={styles.uploadBtnText}>Upload from Gallery</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </SafeAreaView>
+        </CameraView>
       ) : (
-        <View style={styles.resultContainer}>
-          <Ionicons name="checkmark-circle" size={80} color="#34C759" />
-          <ThemedText type="title" style={{ marginTop: 10 }}>
-            Address Found
-          </ThemedText>
+        <SafeAreaView style={styles.resultContainer}>
+          {payloadData.type === "NOT_SIGNED" ? (
+            <SignPaymentModal
+              visible={true}
+              onClose={() => {
+                setScanned(false);
+                setPayloadData(null);
+              }}
+              onSuccess={(signedPayload) => {
+                console.log(signedPayload);
+              }}
+              paymentRequest={{
+                // from: "Nah",
+                to: payloadData.data.receiver,
+                amount: payloadData.data.amount.toString(), // Convert to number if it's a string
+                // nonce: 0,
+              }}
+            />
+          ) : payloadData.type === "SIGNED" ? (
+            <View style={styles.content}>
+              {/* Transaction Details Card */}
+              <Text style={styles.cardTitle}>Transaction details</Text>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>From</Text>
+                  <Text style={styles.rowVal}>
+                    {/* {shortenAddress(paymentRequest.from)} */}
+                    {payloadData.data.from
+                      ? shortenAddress(payloadData.data.from)
+                      : null}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
 
-          <View style={styles.infoBox}>
-            <Text style={styles.label}>Address</Text>
-            <Text style={styles.addressValue}>{walletData.address}</Text>
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>To</Text>
+                  <Text style={styles.rowVal}>
+                    {payloadData.data.to
+                      ? shortenAddress(payloadData.data.to)
+                      : null}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
 
-            <View style={styles.divider} />
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>Amount</Text>
+                  {/* <Text style={styles.rowVal}>#{paymentRequest.nonce}</Text> */}
+                  <Text style={styles.rowVal}>
+                    {payloadData.data.amount !== null
+                      ? `${formatEther(payloadData.data.amount)} ETH`
+                      : "Loading..."}
+                  </Text>
+                </View>
 
-            <Text style={styles.label}>Balance</Text>
-            <Text style={styles.balanceValue}>
-              {walletData.balance} SepoliaETH
-            </Text>
-          </View>
+                <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={styles.retryBtn}
-            onPress={() => {
-              setScanned(false);
-              setWalletData(null);
-            }}
-          >
-            <Text style={styles.retryBtnText}>Scan Again</Text>
-          </TouchableOpacity>
-        </View>
+                <View style={styles.row}>
+                  <Text style={styles.rowKey}>Nonce</Text>
+                  {/* <Text style={styles.rowVal}>#{paymentRequest.nonce}</Text> */}
+                  <Text style={styles.rowVal}>
+                    {payloadData.data.nonce !== null
+                      ? `#${payloadData.data.nonce}`
+                      : "Loading..."}
+                  </Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={handleConfirm}
+              >
+                <Text style={styles.primaryBtnText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </SafeAreaView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  cameraWrapper: { flex: 1 },
-  scanner: { flex: 1 },
+  container: { flex: 1 },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -213,9 +311,10 @@ const styles = StyleSheet.create({
   uploadBtnText: { color: "white", marginLeft: 10, fontWeight: "600" },
   resultContainer: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 40,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     backgroundColor: "#fff",
   },
   infoBox: {
@@ -295,5 +394,70 @@ const styles = StyleSheet.create({
     borderRightWidth: 4,
     borderBottomWidth: 4,
     borderColor: "#007AFF",
+  },
+
+  content: {
+    width: "100%",
+    flex: 1,
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    marginTop: -20,
+    paddingHorizontal: 20,
+    paddingTop: 28,
+    paddingBottom: 32,
+    minHeight: 420,
+  },
+
+  // Card
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 0.5,
+    borderColor: "#e2e8f0",
+    padding: 16,
+    marginBottom: 16,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#00000",
+    marginBottom: 12,
+    textTransform: "none",
+  },
+  row: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 2,
+  },
+  rowKey: {
+    fontSize: 13,
+    color: "#64748b",
+  },
+  rowVal: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#0f172a",
+    fontFamily: "monospace",
+  },
+
+  primaryBtn: {
+    marginTop: 20,
+    backgroundColor: "#007AFF",
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: "center",
+
+    // shadow (iOS)
+    // shadowColor: "#000000",
+    // shadowOffset: { width: 0, height: 6 },
+    // shadowOpacity: 0.3,
+    // shadowRadius: 10,
+  },
+  primaryBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

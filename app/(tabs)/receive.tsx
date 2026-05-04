@@ -38,18 +38,20 @@ export default function ReceiveScreen() {
       return;
     }
 
-    const offlinePayload = {
-      type: "OFFLINE_PAYMENT",
-      receiver: address,
-      amount: amount,
-      currency: "ETH",
-      network: "Sepolia",
-      timestamp: Date.now(),
+    const notSignedPayload = {
+      type: "NOT_SIGNED",
+      data: {
+        receiver: address,
+        amount: amount,
+        currency: "ETH",
+        network: "Sepolia",
+        timestamp: Date.now(),
+      },
     };
 
-    setPayload(JSON.stringify(offlinePayload));
+    setPayload(JSON.stringify(notSignedPayload));
     setShowQR(true);
-    console.log("SUCCESS! Generated Offline Payload:", offlinePayload);
+    console.log("SUCCESS! Generated Not Signed Payload:", notSignedPayload);
     Keyboard.dismiss();
   };
 

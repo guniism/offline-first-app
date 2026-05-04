@@ -117,6 +117,14 @@ export const WalletService = {
       return { success: false, error: error.message };
     }
   },
+
+  async getLocalWallet() {
+    const privateKey = await this.getPrivateKey();
+    if (!privateKey)
+      throw new Error("Wallet not found. Please generate one first.");
+
+    return new Wallet(privateKey);
+  },
 };
 
 // ... ส่วนของ getBalance คงเดิม ...

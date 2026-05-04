@@ -1,5 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
 import { Ionicons } from "@expo/vector-icons";
+import NetInfo from "@react-native-community/netinfo";
+import { parseEther } from "ethers";
 import * as Clipboard from "expo-clipboard";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -16,15 +18,58 @@ import { SafeAreaView } from "react-native-safe-area-context";
 // Import จากไฟล์ที่คุณสร้างไว้
 import { getBalance, WalletService } from "../../utils/wallet";
 
-import { Link } from "expo-router";
+import OfflineBalanceCard from "@/components/custom/OfflineBalanceCard";
+import TransactionList from "@/components/custom/TransactionList";
+import { registerSmartContract } from "@/utils/registerSmartContract";
 
 const { width } = Dimensions.get("window");
 
+const getStatusStyle = (isOnline: boolean | null) => {
+  switch (isOnline) {
+    case true:
+      return { bg: "#ECFDF3", text: "#16A34A", label: "Online" };
+    case false:
+      return { bg: "#FEF2F2", text: "#DC2626", label: "Offline" };
+    case null:
+      return { bg: "#FFFBEB", text: "#F59E0B", label: "Checking" };
+    default:
+      return { bg: "#FFFBEB", text: "#F59E0B", label: "Checking" };
+  }
+};
+
 export default function HomeScreen() {
+  const [isOnline, setIsOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      const online = state.isConnected && state.isInternetReachable;
+
+      setIsOnline(online ?? false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const [hasKeypair, setHasKeypair] = useState(false);
   const [address, setAddress] = useState("");
   const [balance, setBalance] = useState("0.00 ETH");
   const [isLoading, setIsLoading] = useState(false);
+  const [lockedBalance, setLockedBalance] = useState("0.0000");
+  const [receivedBalance, setReceivedBalance] = useState("0.0000");
+
+  async function setBalanceValue(
+    locked: string | null,
+    received: string | null,
+  ) {
+    const savedAddress = await WalletService.getStoredAddress();
+
+    if (savedAddress) {
+      await fetchCurrentBalance(savedAddress);
+    }
+
+    if (locked !== null) setLockedBalance(locked);
+    if (received !== null) setReceivedBalance(received);
+  }
 
   const fetchCurrentBalance = useCallback(async (walletAddress: string) => {
     if (!walletAddress) return;
@@ -32,7 +77,16 @@ export default function HomeScreen() {
     try {
       const newBalance = await getBalance(walletAddress);
       const formatted = parseFloat(newBalance).toFixed(4);
+      const offlineBalance = await registerSmartContract.getBalances();
+
       setBalance(`${formatted} ETH`);
+      setLockedBalance(parseFloat(offlineBalance.lockedBalance).toFixed(4));
+      setReceivedBalance(parseFloat(offlineBalance.receivedBalance).toFixed(4));
+      registerSmartContract.saveLocalData(
+        // parseEther(offlineBalance.nonce).toString(),
+        undefined,
+        parseEther(offlineBalance.lockedBalance).toString(),
+      );
     } catch (error) {
       console.error("Refresh error:", error);
     } finally {
@@ -60,7 +114,13 @@ export default function HomeScreen() {
       fetchCurrentBalance(wallet.address);
       Alert.alert("Security", "New keypair secured in hardware enclave.");
     } catch (error) {
-      Alert.alert("Error", "Could not generate secure keypair.");
+      if (error instanceof Error) {
+        console.error(error.message);
+        Alert.alert("Error", error.message);
+      } else {
+        console.error(error);
+        Alert.alert("Error", "Unknown error occurred");
+      }
     }
   };
 
@@ -80,10 +140,26 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.header}>
+        <View style={styles.headerRow}>
           <ThemedText type="title" style={styles.mainHeading}>
             Offline-first Wallet
           </ThemedText>
+
+          <View
+            style={[
+              styles.statusPill,
+              { backgroundColor: getStatusStyle(isOnline).bg },
+            ]}
+          >
+            <ThemedText
+              style={[
+                styles.statusText,
+                { color: getStatusStyle(isOnline).text },
+              ]}
+            >
+              {getStatusStyle(isOnline).label}
+            </ThemedText>
+          </View>
         </View>
 
         {/* Wallet Card */}
@@ -91,23 +167,25 @@ export default function HomeScreen() {
           <View style={styles.cardInfo}>
             <View>
               <ThemedText style={styles.networkLabel}>
-                Sepolia Test Network
+                Online Balance | Sepolia Testnet
               </ThemedText>
 
               {hasKeypair ? (
                 <View style={styles.balanceRow}>
                   <ThemedText style={styles.balanceText}>{balance}</ThemedText>
-                  <TouchableOpacity
-                    onPress={() => fetchCurrentBalance(address)}
-                    disabled={isLoading}
-                    style={styles.refreshCircle}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Ionicons name="refresh" size={20} color="#FFFFFF" />
-                    )}
-                  </TouchableOpacity>
+                  {isOnline && (
+                    <TouchableOpacity
+                      onPress={() => fetchCurrentBalance(address)}
+                      disabled={isLoading}
+                      style={styles.refreshCircle}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Ionicons name="refresh" size={20} color="#FFFFFF" />
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               ) : (
                 <TouchableOpacity
@@ -144,48 +222,20 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <ThemedText style={styles.sectionHeader}>Main Services</ThemedText>
-        <View style={[styles.servicesGrid, !hasKeypair && { opacity: 0.5 }]}>
-          <Link href="/normal-send" asChild>
-            <TouchableOpacity>
-              <ServiceBtn
-                icon="arrow-up"
-                label="Send"
-                bgColor="#F0F7FF"
-                iconColor="#0062FF"
-                disabled={false}
-              />
-            </TouchableOpacity>
-          </Link>
-          <ServiceBtn
-            icon="arrow-down"
-            label="Receive"
-            bgColor="#F0FFF4"
-            iconColor="#34C759"
-            disabled={!hasKeypair}
-          />
+        {/* Register to smart contract */}
+        <OfflineBalanceCard
+          setBalanceValue={setBalanceValue}
+          lockedBalance={lockedBalance}
+          receivedBalance={receivedBalance}
+          isOnline={isOnline}
+        />
 
-          <ServiceBtn
-            icon="grid-outline"
-            label="More"
-            bgColor="#F8F8F8"
-            iconColor="#8E8E93"
-            disabled={!hasKeypair}
-          />
-        </View>
+        {/* transaction list and other components... */}
+        <TransactionList />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const ServiceBtn = ({ icon, label, bgColor, iconColor, disabled }: any) => (
-  <View style={styles.serviceItem}>
-    <View style={[styles.serviceIconBox, { backgroundColor: bgColor }]}>
-      <Ionicons name={icon} size={26} color={iconColor} />
-    </View>
-    <ThemedText style={styles.serviceLabel}>{label}</ThemedText>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
@@ -200,10 +250,10 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: "space-between",
     elevation: 8,
-    shadowColor: "#0062FF",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
+    // shadowColor: "#0062FF",
+    // shadowOffset: { width: 0, height: 10 },
+    // shadowOpacity: 0.2,
+    // shadowRadius: 15,
   },
   cardInfo: {
     flexDirection: "row",
@@ -308,4 +358,23 @@ const styles = StyleSheet.create({
   },
   securityTitle: { fontSize: 15, fontWeight: "700" },
   securityDescription: { fontSize: 13, color: "#636366", lineHeight: 18 },
+
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+
+  statusText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+    marginBottom: 16,
+  },
 });

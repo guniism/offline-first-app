@@ -74,11 +74,10 @@ const DepositModal: React.FC<DepositModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={false} // เปลี่ยนเป็น false เพื่อให้เหมือน TransactionSettlement
+      transparent={false}
       onRequestClose={handleClose}
     >
       <SafeAreaView style={styles.container}>
-        {/* Header - สไตล์เดียวกับ TransactionSettlement */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Deposit ETH</Text>
           <TouchableOpacity onPress={handleClose} disabled={isLoading}>
@@ -91,7 +90,6 @@ const DepositModal: React.FC<DepositModalProps> = ({
           style={{ flex: 1 }}
         >
           <View style={styles.content}>
-            {/* Info Banner - ปรับให้ดูเป็นการ์ดมากขึ้น */}
             <View style={styles.infoCard}>
               <View style={styles.infoRow}>
                 <Ionicons name="lock-closed" size={18} color="#0062FF" />

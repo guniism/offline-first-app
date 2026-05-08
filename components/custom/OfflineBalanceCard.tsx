@@ -9,8 +9,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-// import { isWeb, supportsSecureStore } from "./platform"; // สมมติว่า path นี้ถูกต้องตามที่คุณให้มา
-// import { registerSmartContract } from "./path-to-your-register-file"; // import function ที่คุณเขียนไว้
 
 import { isWeb, supportsSecureStore } from "@/utils/platform";
 import { registerSmartContract } from "@/utils/registerSmartContract";
@@ -41,7 +39,6 @@ const OfflineBalanceCard = ({
 
   const [depositModalVisible, setDepositModalVisible] = useState(false);
 
-  // 1. ตรวจสอบสถานะตอนเปิด Component
   useEffect(() => {
     checkRegistration();
   }, []);
@@ -55,7 +52,6 @@ const OfflineBalanceCard = ({
         nonce = window.localStorage.getItem(NONCE);
       }
 
-      // ถ้ามี nonce แสดงว่าลงทะเบียนแล้ว
       setIsRegistered(!!nonce);
     } catch (e) {
       console.error("Failed to fetch nonce", e);
@@ -64,7 +60,6 @@ const OfflineBalanceCard = ({
     }
   };
 
-  // 2. ฟังก์ชันเมื่อกดปุ่ม Register
   const handleRegister = async () => {
     setIsRegistering(true);
     try {
@@ -99,15 +94,11 @@ const OfflineBalanceCard = ({
         );
       }
     } catch (error: unknown) {
-      // TypeScript defaults to unknown
       console.error("WithdrawAll Handler Error:", error);
 
-      // 1. Define a fallback message
       let msg = "An error occurred during withdrawal";
 
-      // 2. Narrow the type to access properties safely
       if (error instanceof Error) {
-        // If it's a standard Error or ethers error object
         msg = (error as any).reason || error.message;
       } else if (typeof error === "string") {
         msg = error;
@@ -116,7 +107,7 @@ const OfflineBalanceCard = ({
       Alert.alert("Withdrawal Failed", msg);
     } finally {
       setWithdrawLoading(false);
-      setBalanceValue(null, "0.0000"); // อัปเดตยอด received เป็น 0 หลังถอน
+      setBalanceValue(null, "0.0000");
     }
   };
 
@@ -164,7 +155,6 @@ const OfflineBalanceCard = ({
     );
   }
 
-  // ส่วนแสดงยอดเงิน (UI เดิมของคุณ)
   return (
     <View style={styles.container}>
       <DepositModal
@@ -235,8 +225,8 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     paddingVertical: 20,
     paddingHorizontal: 12,
-    flexDirection: "row", // ทำให้เป็น 2 คอลัมน์ (เหมือน grid-cols-2)
-    // alignItems: "center", // จัดให้เนื้อหาแนวตั้งอยู่กลาง
+    flexDirection: "row",
+    // alignItems: "center",
     borderWidth: 1.5,
     borderColor: "#e4e4e4",
   },
@@ -246,7 +236,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 30,
-    borderStyle: "dashed", // เปลี่ยนเป็นเส้นประเพื่อให้ดูเหมือนส่วนที่รอการกรอกข้อมูล
+    borderStyle: "dashed",
   },
   registerInfo: {
     alignItems: "center",
@@ -278,7 +268,7 @@ const styles = StyleSheet.create({
   },
   // --- Original Styles ---
   section: {
-    flex: 1, // บังคับให้ทั้งสองฝั่งกินพื้นที่ 50/50 เท่ากันเป๊ะ
+    flex: 1,
     paddingHorizontal: 10,
     // borderWidth: 1,
     // height: 150,
@@ -295,7 +285,7 @@ const styles = StyleSheet.create({
   divider: {
     width: 1.5,
     backgroundColor: "#e4e4e4",
-    marginHorizontal: 16, // ใช้ margin แทน gap
+    marginHorizontal: 16,
   },
   label: {
     color: "#6B7280",
@@ -315,7 +305,7 @@ const styles = StyleSheet.create({
     borderColor: "#E5E7EB",
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "stretch", // เปลี่ยนจาก width: "95%"
+    alignSelf: "stretch",
   },
   buttonText: { fontSize: 12, fontWeight: "700", color: "#4B5563" },
 });

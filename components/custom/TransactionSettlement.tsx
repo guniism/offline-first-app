@@ -3,13 +3,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { ethers } from "ethers";
 import React from "react";
 import {
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 
@@ -151,9 +151,8 @@ const TransactionSettlement: React.FC<SignedQRModalProps> = ({
             ]}
             onPress={() => onSettle(payload)}
             activeOpacity={0.8}
-            disabled={settleLoading} // ป้องกันการกดย้ำ
+            disabled={settleLoading}
           >
-            {/* ถ้าไม่ Loading ให้โชว์ Icon ปกติ */}
             {!settleLoading && (
               <Ionicons
                 name="checkmark-circle-outline"

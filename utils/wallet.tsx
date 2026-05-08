@@ -1,20 +1,21 @@
-import { JsonRpcProvider, parseEther, Wallet } from "ethers";
+import { parseEther, Wallet } from "ethers";
 import Constants from "expo-constants";
 import * as Crypto from "expo-crypto"; // ใช้ตัวนี้แทนการสุ่มของ ethers
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 import { supportsSecureStore } from "./platform";
+import { ETHERSCAN_API_KEY, getProvider } from "./registerSmartContract";
 
 const PRIVATE_KEY_STORAGE_KEY = "user_private_key";
 const ADDRESS_STORAGE_KEY = "user_address";
 
-// เช็คว่ารันบน Expo Go หรือไม่ (ถ้าใช่ต้องปิด requireAuthentication)
+// Check Expo Go
 const isExpoGo = Constants.appOwnership === "expo";
 
 export const WalletService = {
   async generateAndSaveKeypair() {
     try {
-      let wallet: any; // เปลี่ยนจาก Wallet เป็น any
+      let wallet: any;
 
       if (Platform.OS !== "web") {
         const randomBytes = Crypto.getRandomValues(new Uint8Array(32));
@@ -64,7 +65,6 @@ export const WalletService = {
   async getPrivateKey() {
     if (supportsSecureStore) {
       return await SecureStore.getItemAsync(PRIVATE_KEY_STORAGE_KEY, {
-        // ต้องสอดคล้องกับตอน Save
         requireAuthentication: !isExpoGo,
       });
     } else if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -85,30 +85,20 @@ export const WalletService = {
 
   async sendTransaction(toAddress: string, amountEth: string) {
     try {
-      // 1. ดึง Private Key ที่เก็บไว้ในเครื่องออกมา
       const privateKey = await this.getPrivateKey();
       if (!privateKey)
         throw new Error("Wallet not found. Please generate one first.");
 
-      // 2. เชื่อมต่อกับ Blockchain (ตัวอย่างเป็น Sepolia Testnet)
-      // แนะนำให้ใช้ RPC URL ของตัวเองจาก Alchemy/Infura เพื่อความเสถียร
-      const provider = new JsonRpcProvider(
-        "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-      );
+      const signer = new Wallet(privateKey, getProvider());
 
-      // 3. สร้าง Wallet instance ที่ผูกกับ Provider
-      const signer = new Wallet(privateKey, provider);
-
-      // 4. ส่ง Transaction
       console.log(`Sending ${amountEth} ETH to ${toAddress}...`);
       const tx = await signer.sendTransaction({
         to: toAddress,
-        value: parseEther(amountEth), // แปลงหน่วยจาก ETH เป็น Wei
+        value: parseEther(amountEth), //ETH2Wei
       });
 
       console.log("Transaction sent! Hash:", tx.hash);
 
-      // 5. รอการยืนยัน (Optional)
       // const receipt = await tx.wait();
 
       return { success: true, hash: tx.hash };
@@ -127,32 +117,23 @@ export const WalletService = {
   },
 };
 
-// ... ส่วนของ getBalance คงเดิม ...
-
-// // ดักฟังทุกครั้งที่มี Block ใหม่ (ประมาณทุกๆ 12 วินาทีบน Ethereum)
-// provider.on("block", async (blockNumber) => {
-//   const newBalance = await getBalance(userAddress);
-//   setBalance(newBalance); // อัปเดต State ใน UI
-// });
-
 export const getBalance = async (address: string): Promise<string> => {
-  const API_KEY = "MNQGK1HRMJPUNBKAPVQI94KPZW2VXX3IVB";
+  const apikey = ETHERSCAN_API_KEY;
   const CHAIN_ID = "11155111";
 
-  const url = `https://api.etherscan.io/v2/api?apikey=${API_KEY}&module=account&chainid=${CHAIN_ID}&action=balance&address=${address}&tag=latest`;
+  const url = `https://api.etherscan.io/v2/api?apikey=${apikey}&module=account&chainid=${CHAIN_ID}&action=balance&address=${address}&tag=latest`;
 
   try {
     const response = await fetch(url);
     const data = await response.json();
 
-    // เช็ค status จาก Etherscan API (1 คือสำเร็จ)
+    // Etherscan API check status
     if (data.status === "1") {
       const balanceInWei = data.result;
       const balanceInEth = parseFloat(balanceInWei) / 10 ** 18;
 
       console.log(`Address: ${address} | Balance: ${balanceInEth} ETH`);
 
-      // ส่งคืนค่าเป็น String พร้อมทศนิยม 4 ตำแหน่งสำหรับโชว์ใน UI
       return balanceInEth.toFixed(4);
     } else {
       console.warn("API returned an error:", data.message);

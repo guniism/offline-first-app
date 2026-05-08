@@ -163,15 +163,12 @@ export default function ScanPage() {
     try {
       console.log("Broadcasting TX:", payloadData);
 
-      // 1. Save to local storage using your utility
-      // This ensures the user sees it in their TransactionList later
       await saveSignedTx(payloadData.data);
 
       Alert.alert("Success", "Transaction sent successfully", [
         {
           text: "OK",
           onPress: () => {
-            // 2. Reset state only after user acknowledges
             setScanned(false);
             setPayloadData(null);
           },

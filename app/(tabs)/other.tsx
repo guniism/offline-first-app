@@ -151,6 +151,56 @@ const TransactionList = () => {
       </View>
     );
 
+  const handleResetWallet = async () => {
+    // First Confirmation
+    Alert.alert(
+      "Reset Wallet",
+      "This will delete your Private Key and Address. Are you sure?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Yes, Reset",
+          style: "destructive",
+          onPress: () => {
+            // Second Confirmation (Double Check)
+            Alert.alert(
+              "FINAL WARNING",
+              "This action is permanent. You will lose access to this wallet if you haven't backed up your Private Key!",
+              [
+                { text: "Stop! Cancel", style: "cancel" },
+                {
+                  text: "I understand, Delete All",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      if (supportsSecureStore) {
+                        await SecureStore.deleteItemAsync("user_private_key");
+                        await SecureStore.deleteItemAsync("user_address");
+                        await SecureStore.deleteItemAsync("user_nonce");
+                      } else if (isWeb) {
+                        window.localStorage.removeItem("user_private_key");
+                        window.localStorage.removeItem("user_address");
+                        window.localStorage.removeItem("user_nonce");
+                      }
+                      setNonceInput("");
+                      setTxs([]);
+                      Alert.alert(
+                        "Reset Complete",
+                        "All wallet data has been wiped.",
+                      );
+                    } catch (error) {
+                      Alert.alert("Error", "Failed to reset wallet storage.");
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#fff" }}>
       {/* 1. NONCE EDITOR */}
@@ -195,6 +245,14 @@ const TransactionList = () => {
           </Text>
         </TouchableOpacity>
       </Link>
+
+      <TouchableOpacity
+        style={styles.clearNonceBtn}
+        onPress={handleResetWallet}
+      >
+        <Ionicons name="warning-outline" size={16} color="#B91C1C" />
+        <Text style={styles.clearNonceBtnText}>Reset Wallet</Text>
+      </TouchableOpacity>
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Transactions</Text>

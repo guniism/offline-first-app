@@ -4,11 +4,11 @@ pragma solidity ^0.8.19;
 contract OfflinePaymentSystem {
 
     struct UserAccount {
-        bytes securePublicKey; // Public Key จาก Secure Enclave
-        uint256 lockedBalance;   // เงินที่ "ล็อคไว้จ่าย" (ถอนไม่ได้ ต้องใช้จ่ายออฟไลน์เท่านั้น)
-        uint256 receivedBalance; // เงินที่ "ได้รับจากคนอื่น" (ถอนเป็นเงินสดได้)
-        uint256 nonce;           // เริ่มที่ 0
-        bool isRegistered;       // ตัวเช็คว่าเคยลงทะเบียนหรือยัง
+        bytes securePublicKey; // Public Key from the device's Secure Enclave
+        uint256 lockedBalance;   // Funds "Locked for spending" (Non-withdrawable, for offline use only)
+        uint256 receivedBalance; // Funds "Received from others" (Withdrawable to wallet)
+        uint256 nonce;           // Transaction counter, starts at 0
+        bool isRegistered;       // Registration status flag
     }
 
     mapping(address => UserAccount) public users;
@@ -17,7 +17,7 @@ contract OfflinePaymentSystem {
     event Deposited(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
 
-    // 1. ลงทะเบียนครั้งแรก
+    // 1. Initial registration
     function register(bytes memory _publicKey) external {
         require(!users[msg.sender].isRegistered, "Already registered");
         
@@ -30,7 +30,7 @@ contract OfflinePaymentSystem {
         emit Registered(msg.sender, _publicKey);
     }
 
-    // 2. ฝากเงินเข้า lockedBalance (เพื่อเอาไว้ใช้จ่าย Offline)
+    // 2. Deposit ETH into lockedBalance (to be used for offline payments)
     function deposit() external payable {
         require(users[msg.sender].isRegistered, "Must register first");
         require(msg.value > 0, "Amount must > 0");
@@ -39,7 +39,7 @@ contract OfflinePaymentSystem {
         emit Deposited(msg.sender, msg.value);
     }
 
-    // 3. ถอนเงินจาก receivedBalance (เฉพาะเงินที่ได้จากการรับชำระเท่านั้น)
+    // 3. Withdraw ETH from receivedBalance (funds acquired from receiving payments)
     function withdrawReceived(uint256 _amount) external {
         require(users[msg.sender].receivedBalance >= _amount, "Insufficient received balance");
         
@@ -51,7 +51,7 @@ contract OfflinePaymentSystem {
         emit Withdrawn(msg.sender, _amount);
     }
 
-    // ฟังก์ชัน Get ข้อมูลสำหรับยิงถาม (ไม่เสีย Gas)
+    // Helper function to query account data (Read-only, costs no Gas)
     function checkBalances(address _user) external view returns (
         uint256 forSpending, 
         uint256 forWithdraw,

@@ -4,11 +4,16 @@ import * as SecureStore from "expo-secure-store";
 import { isWeb, supportsSecureStore } from "./platform";
 import { WalletService } from "./wallet";
 
+const ALCHEMY_API_KEY =
+  "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN";
+
+export const ETHERSCAN_API_KEY = "MNQGK1HRMJPUNBKAPVQI94KPZW2VXX3IVB";
+
 const NONCE = "user_nonce";
 const LOCKED_BALANCE = "user_locked_balance";
 
-// const CONTRACT_ADDRESS = "0xF305F449d9e4258C077575f0c1b09bc777A4B1Cc";
-const CONTRACT_ADDRESS = "0x55a78F1Db4F0dDd0860d6fE032B71eC21Eb88CED"; // เปลี่ยนเป็น address ของคุณ
+// const CONTRACT_ADDRESS = "0xF305F449d9e4258C077575f0c1b09bc777A4B1Cc"; // Previous Smart Contract
+const CONTRACT_ADDRESS = "0x55a78F1Db4F0dDd0860d6fE032B71eC21Eb88CED";
 const CONTRACT_ABI = [
   "function register(bytes memory _publicKey) external",
   "function deposit() external payable",
@@ -19,15 +24,17 @@ const CONTRACT_ABI = [
   "function checkBalances(address _user) external view returns (uint256 forSpending, uint256 forWithdraw, uint256 currentNonce)",
 ];
 
+export const getProvider = () => {
+  const provider = new ethers.JsonRpcProvider(ALCHEMY_API_KEY);
+  return provider;
+};
+
 export const registerSmartContract = {
   async register() {
     const wallet = await WalletService.getLocalWallet();
     if (!wallet) throw new Error("No wallet found");
 
-    const provider = new ethers.JsonRpcProvider(
-      "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-    ); // แนะนำให้ใช้ Private RPC
-    const signer = wallet.connect(provider);
+    const signer = wallet.connect(getProvider());
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
@@ -37,28 +44,24 @@ export const registerSmartContract = {
     let locked, received, nonce;
 
     try {
-      // 1. ลองลงทะเบียน
+      // First Register
       const publicKey = wallet.signingKey.publicKey;
       const tx = await contract.register(ethers.toUtf8Bytes(publicKey));
       await tx.wait();
 
-      // กรณีลงทะเบียนใหม่สำเร็จ ค่าเริ่มต้นบน Chain จะเป็น 0
       locked = 0n;
       received = 0n;
       nonce = 0n;
 
-      // ถ้าสำเร็จ เซตค่าเริ่มต้น
-      await this.saveLocalData("-1", "0");
+      await this.saveLocalData("-1", "0"); // Success
     } catch (error) {
-      // 2. ถ้าเคยลงทะเบียนแล้ว (Error: Already registered)
+      // Error: Already registered
       if (
         error instanceof Error &&
         error.message.includes("Already registered")
       ) {
         console.log("User already registered on-chain. Syncing data...");
 
-        // ดึงข้อมูลจาก Smart Contract (checkBalances คืนค่ากลับมาเป็น array [balance, nonce, locked])
-        // สมมติ ABI คือ: checkBalances(address) returns (uint256, uint256, uint256)
         const [onChainLocked, onChainReceived, onChainNonce] =
           await contract.checkBalances(wallet.address);
 
@@ -66,10 +69,8 @@ export const registerSmartContract = {
         received = onChainReceived;
         nonce = onChainNonce;
 
-        // เซตค่าที่ดึงมาจาก Chain ลง Storage (แปลงจาก BigInt เป็น String)
-        await this.saveLocalData(undefined, locked.toString());
+        await this.saveLocalData(undefined, locked.toString()); // Store local
       } else {
-        // ถ้าเป็น Error อื่นๆ ให้โยน Error ต่อ
         throw error;
       }
     }
@@ -81,7 +82,6 @@ export const registerSmartContract = {
     };
   },
 
-  // Helper function สำหรับเซตค่าลง Storage
   async saveLocalData(nonce?: string, lockedBalance?: string) {
     if (supportsSecureStore) {
       if (nonce) {
@@ -104,13 +104,10 @@ export const registerSmartContract = {
     const wallet = await WalletService.getLocalWallet();
     if (!wallet) throw new Error("No wallet found");
 
-    const provider = new ethers.JsonRpcProvider(
-      "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-    );
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
-      provider, // ✅ ใช้ provider ธรรมดา ไม่ต้อง signer เพราะแค่ view
+      getProvider(),
     );
 
     const [locked, received, nonce] = await contract.checkBalances(
@@ -118,7 +115,7 @@ export const registerSmartContract = {
     );
 
     return {
-      lockedBalance: ethers.formatEther(locked), // ETH string สำหรับแสดงผล
+      lockedBalance: ethers.formatEther(locked), // ETH string
       receivedBalance: ethers.formatEther(received),
       nonce: nonce.toString(),
     };
@@ -128,10 +125,7 @@ export const registerSmartContract = {
     const wallet = await WalletService.getLocalWallet();
     if (!wallet) throw new Error("No wallet found");
 
-    const provider = new ethers.JsonRpcProvider(
-      "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-    );
-    const signer = wallet.connect(provider);
+    const signer = wallet.connect(getProvider());
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
@@ -139,23 +133,18 @@ export const registerSmartContract = {
     );
 
     try {
-      // 1. ส่ง Transaction ไปยังฟังก์ชัน deposit
       const tx = await contract.deposit({
-        value: ethers.parseEther(amountInEth), // แปลง ETH -> Wei
+        value: ethers.parseEther(amountInEth), // ETH2Wei
       });
 
       console.log("Deposit pending...", tx.hash);
-      await tx.wait(); // รอจนกว่าจะ Success
+      await tx.wait();
 
-      // 2. เมื่อสำเร็จ ให้ดึงข้อมูลล่าสุดจาก Chain (Sync Balance)
-      // ลำดับตาม Solidity: returns (lockedBalance, receivedBalance, nonce)
+      // Success then fetch balances
       const [locked, received, nonce] = await contract.checkBalances(
         wallet.address,
       );
 
-      // 3. บันทึกค่าลง Local Storage
-      // (เลือกบันทึกเฉพาะค่าที่ต้องการ ในที่นี้คือ lockedBalance และ nonce)
-      // await this.saveLocalData(nonce.toString(), locked.toString());
       await this.saveLocalData(undefined, locked.toString());
 
       return {
@@ -173,10 +162,7 @@ export const registerSmartContract = {
     const wallet = await WalletService.getLocalWallet();
     if (!wallet) throw new Error("No wallet found");
 
-    const provider = new ethers.JsonRpcProvider(
-      "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-    );
-    const signer = wallet.connect(provider);
+    const signer = wallet.connect(getProvider());
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
@@ -184,7 +170,6 @@ export const registerSmartContract = {
     );
 
     try {
-      // 1. เช็ค receivedBalance ก่อนว่าพอมั้ย
       const [, received] = await contract.checkBalances(wallet.address);
       const amountInWei = ethers.parseEther(amountInEth);
 
@@ -194,17 +179,14 @@ export const registerSmartContract = {
         );
       }
 
-      // 2. ส่ง tx ถอนเงิน
       const tx = await contract.withdrawReceived(amountInWei);
       console.log("Withdraw pending...", tx.hash);
       await tx.wait();
 
-      // 3. Sync balance ล่าสุดจาก Chain
       const [locked, newReceived, nonce] = await contract.checkBalances(
         wallet.address,
       );
 
-      // 4. บันทึกลง Local
       await this.saveLocalData(undefined, locked.toString());
 
       return {
@@ -223,28 +205,22 @@ export const registerSmartContract = {
     const wallet = await WalletService.getLocalWallet();
     if (!wallet) throw new Error("No wallet found");
 
-    const provider = new ethers.JsonRpcProvider(
-      "https://eth-sepolia.g.alchemy.com/v2/ii61OtUjqG_3iyZR_3eEN",
-    );
-
     const contract = new ethers.Contract(
       CONTRACT_ADDRESS,
       CONTRACT_ABI,
-      provider, // ใช้แค่ provider อ่านค่าเฉยๆ ก่อน
+      getProvider(),
     );
 
     try {
-      // 1. ดึงยอด receivedBalance ทั้งหมดที่มีอยู่บน Chain ออกมา
       const [, received] = await contract.checkBalances(wallet.address);
 
       if (received === 0n) {
         throw new Error("No balance available to withdraw");
       }
 
-      // 2. แปลงจาก BigInt เป็น String (เพราะ withdraw รับ amountInEth: string)
+      // BigInt2String
       const totalAmountEth = ethers.formatEther(received);
 
-      // 3. เรียกใช้ฟังก์ชัน withdraw เดิมที่มีอยู่
       return await this.withdraw(totalAmountEth);
     } catch (error) {
       console.error("Withdraw All failed:", error);
@@ -290,7 +266,7 @@ export const settlementSmartContract = {
       signer,
     );
 
-    // เช็คก่อนว่า settle แล้วหรือยัง (ไม่เสีย gas)
+    // Check Settle
     const already = await contract.txExists(
       payload.from,
       payload.to,
@@ -313,7 +289,7 @@ export const settlementSmartContract = {
     console.log("Settlement pending...", tx.hash);
     await tx.wait();
 
-    // Sync balance หลัง settle
+    // Sync balance after settle
     const [locked, received, nonce] = await contract.checkBalances(
       wallet.address,
     );

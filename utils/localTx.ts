@@ -57,10 +57,6 @@ export async function clearAllSignedTx() {
   await deleteItem(TX_LIST);
 }
 
-// import { SignedPayload } from "@/types/types";
-// import * as SecureStore from "expo-secure-store";
-// import { isWeb, supportsSecureStore } from "./platform";
-
 // // type TxStatus = "PENDING" | "SUCCESS" | "FAILED";
 // // // type TxOwner = "OWNER" | "ANOTHER";
 

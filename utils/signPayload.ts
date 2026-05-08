@@ -23,13 +23,13 @@ export async function signPayload(
   amountEth: string, // ****
   nonce: number,
 ) {
-  const amountWei = ethers.parseEther(amountEth); //
+  const amountWei = ethers.parseEther(amountEth);
 
   const hash = createHash(from, to, amountWei, nonce);
 
   const wallet = await WalletService.getLocalWallet();
 
-  // const signature = wallet.signingKey.sign(hash); // old method (not secure)
+  // const signature = wallet.signingKey.sign(hash); // old method
 
   const flatSig = await wallet.signMessage(ethers.getBytes(hash));
   const signature = ethers.Signature.from(flatSig);

@@ -5,5 +5,5 @@ export const isAndroid = Platform.OS === "android";
 export const isWeb = Platform.OS === "web";
 export const isWindows = Platform.OS === "windows";
 
-// SecureStore is only supported on native mobile platforms
+// SecureStore
 export const supportsSecureStore = isIOS || isAndroid;
